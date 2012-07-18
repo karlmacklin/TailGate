@@ -1,1 +1,222 @@
-hej hopp
+<!DOCTYPE html>
+<html>
+<head>
+	<title>TailGate</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+	<script src="https://current.bootstrapcdn.com/bootstrap-v204/js/bootstrap.min.js"></script>
+	<link rel="stylesheet" href="https://current.bootstrapcdn.com/bootstrap-v204/css/bootstrap.min.css">
+	<script src="/socket.io/socket.io.js"></script>
+	<style type="text/css">
+		body {
+			background-color: #222;
+			color: #aaa;
+			font-family: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande", "Lucida Sans", Arial, sans-serif;
+		}
+
+		#info h3 {
+			margin-left: 10px;
+		}
+
+		#tail {
+			border: 1px solid #444;
+			overflow-y: auto;
+			background-color: #333;
+			color: #EEE;
+			text-shadow: #000 0 0 2px;
+			height: 808px;
+			padding: 10px;
+			font-size: 12px;
+			line-height: 20px;
+			min-width: 1010px;
+		}
+
+		#tail pre {
+			padding: 0;
+			/*word-break: normal;;*/
+			/*word-wrap: normal;*/
+			background-color: #333;
+			color:#eee;
+			border-radius: 0;
+			border:none;
+		}
+
+		#controlbar {
+			padding: 10px;
+			width: 1010px;
+		}
+
+		#filename-input	{
+			margin-top: 9px;
+			width: 300px;
+			margin-right: 10px;
+		}
+
+		#file-selector {
+			width: 300px;
+			margin-top: 9px;
+			margin-left: 40px;
+			margin-right: 10px;
+		}
+
+		.monospace {
+			font-family: Monaco, "Bitstream Vera Sans Mono", "Lucida Console", Terminal, monospace;
+		}
+
+		.message {
+			width: 300px;
+			height: 100px;
+			text-align: center;
+			text-shadow: none;
+			color:#333;
+			margin: 80px auto;
+		}
+
+	</style>
+</head>
+<body>
+<div id="controlbar">
+	<input type="text" id="filename-input">
+	<button id="button-open-file" class="btn btn-small btn-inverse"><i class="icon-search icon-white"></i> Open file</button>
+	<select name="file-selector" id="file-selector" disabled="disabled">
+		<option value="default">No previous files opened</option>
+	</select>
+	<button class="btn btn-small btn-inverse" id="button-reset-cookie"><i class="icon-trash icon-white"></i> Clear file history cookie</button>
+	<button class="btn btn-small btn-inverse active" data-toggle="button" id="button-autoscroll"><i class="icon-refresh icon-white"></i> Autoscroll</button>
+
+</div>
+<div id="tail" class="monospace">
+	<div class="well message">No file open yet</div>
+	<pre></pre>
+</div>
+<script type="text/javascript">
+
+	// cookie handling! yum yum!
+	var CookieStore = (function() {
+
+		var filenames;
+
+		return {
+			save : function(filename){
+				this.getFiles();
+				var date = new Date();
+				date.setTime(date.getTime()+(365*24*60*60*1000));
+				var indexOfNewFilename = filenames.indexOf(filename);
+				if (indexOfNewFilename > -1) {
+					filenames.splice(indexOfNewFilename,1);
+				}
+				var newCookieValue = filename;
+				for(var i = 0; i < filenames.length; i++){
+					newCookieValue += '*'+filenames[i];
+				}
+				document.cookie = 'list='+newCookieValue+'; expires='+date.toGMTString()+'; path=/;';
+				filenames.unshift(filename);
+			},
+			reset : function() {
+				document.cookie = 'list=; expires=Fri, 27 Jul 2001 00:00:00 UTC; path=/;';
+				filenames = [];
+			},
+			getFiles : function() {
+				filenames = document.cookie.split('list=')[1].split('*');
+				return filenames;
+			}
+		}
+	})();
+
+	// init script
+	$(function(){
+		var autoscroll = true;
+
+		$('#filename-input').tooltip({title:'Enter full path to file you wish to tail', placement:'bottom'});
+
+		var defaultPort = 8081;
+		var socket = io.connect(null,defaultPort);
+		var buffer = $('#tail');
+		var bufferPre = $('#tail pre');
+
+		socket.on('connected',function(data){
+			var previousFiles =	CookieStore.getFiles();
+			if(previousFiles.length > 0) {
+				updateDropdown();
+				openFile(previousFiles[0]);
+			}
+		});
+
+		socket.on('error',function(data){
+			bufferPre.html('');
+			$('.message').css('display','block').html(data);
+		});
+
+		socket.on('initialTextData',function(data){
+			$('.message').css('display','none');
+			bufferPre.html('');
+			bufferPre.append(data.text.join("\n"));
+			CookieStore.save(data.filename);
+			document.title = data.filename + " - TailGate";
+			if(autoscroll){
+				buffer.scrollTop(buffer.prop('scrollHeight'));
+			}
+			updateDropdown();
+		});
+
+		socket.on('continuousTextData',function(data){
+			bufferPre.append(data.text.join("\n"));
+			if(autoscroll) {
+				buffer.scrollTop(buffer.prop('scrollHeight'));
+			}
+		});
+
+		socket.on('fileReset', function(data){
+			console.log('hej');
+			bufferPre.html('');
+		});
+
+		$('#button-autoscroll').click(function(){
+			autoscroll = !$(this).hasClass('active');
+		});
+		$('#button-reset-cookie').click(function(){
+			CookieStore.reset();
+			updateDropdown();
+		});
+		$('#button-open-file').click(openFile);
+		$('#filename-input').keypress(function(event){
+			if ( event.which == 13 ) {
+				event.preventDefault();
+				openFile();
+			}
+		});
+
+		$('#file-selector').change(function(){
+			openFile($(this).val());
+		});
+
+		function updateDropdown() {
+			var previousFiles =	CookieStore.getFiles();
+			if(previousFiles.length > 0) {
+				var selectContent = '';
+				for(var i = 0; i < previousFiles.length; i++) {
+					selectContent += '<option value="'+previousFiles[i]+'">'+previousFiles[i]+'</option>';
+				}
+				$('#file-selector').prop('disabled',false).html(selectContent);
+			} else {
+				$('#file-selector').prop('disabled',true).html('<option value="default">No previous files opened</option>');
+			}
+		}
+
+		function openFile(filename) {
+			var fileToOpen = (typeof filename === 'string') ? filename : $('#filename-input').val();
+			if(fileToOpen != '' && fileToOpen != null) {
+				socket.emit('openFile',{filename:fileToOpen});
+			} else {
+				$('.message').css('display','block').html('Enter a path to a file for tailing!');
+			}
+		}
+
+
+
+
+	});
+
+</script>
+</body>
+</html>
