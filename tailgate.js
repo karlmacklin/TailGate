@@ -18,6 +18,7 @@ function handler (req, res) {
 		});
 }
 
+
 io.sockets.on('connection', function (socket) {
 	var currentWatcher;
 	var currentFilesize;
@@ -85,4 +86,3 @@ io.sockets.on('connection', function (socket) {
 	}
 
 });
-

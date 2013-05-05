@@ -4,8 +4,8 @@
 	<title>TailGate</title>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
-	<script src="https://current.bootstrapcdn.com/bootstrap-v204/js/bootstrap.min.js"></script>
-	<link rel="stylesheet" href="https://current.bootstrapcdn.com/bootstrap-v204/css/bootstrap.min.css">
+	<script src="https://netdna.bootstrapcdn.com/bootstrap-v204/js/bootstrap.min.js"></script>
+	<link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap-v204/css/bootstrap.min.css">
 	<script src="/socket.io/socket.io.js"></script>
 	<style type="text/css">
 		body {
@@ -117,7 +117,11 @@
 				filenames = [];
 			},
 			getFiles : function() {
-				filenames = document.cookie.split('list=')[1].split('*');
+                if(document.cookie == '') {
+                    filenames = [];
+                } else {
+                    filenames = document.cookie.split('list=')[1].split('*');
+                }
 				return filenames;
 			}
 		}
